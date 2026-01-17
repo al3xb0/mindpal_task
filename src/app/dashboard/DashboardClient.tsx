@@ -62,7 +62,7 @@ export function DashboardClient({ userEmail }: DashboardClientProps) {
 
   const handleFilterChange = useCallback((newFilters: FilterValues) => {
     setFilters(prevFilters => {
-      if (newFilters.name !== prevFilters.name) {
+      if (newFilters.name !== prevFilters.name || newFilters.status !== prevFilters.status || newFilters.species !== prevFilters.species) {
         setCurrentPage(1)
       }
       return newFilters

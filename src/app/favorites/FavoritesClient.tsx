@@ -61,7 +61,7 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
   const favoriteToCharacter = (fav: FavoriteCharacter): Character => ({
     id: String(fav.character_id),
     name: fav.character_name,
-    image: fav.character_image || '/placeholder.png',
+    image: fav.character_image || '/placeholder.svg',
     status: (fav.character_status as Character['status']) || 'unknown',
     species: fav.character_species || 'Unknown',
     type: '',

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useDebounce, useFavorites } from '@/lib/hooks'
+import { useDebounce, useFavorites, useUrlPagination } from '@/lib/hooks'
 import { PAGINATION, CHARACTER_STATUS, DEBOUNCE_DELAY } from '@/lib/constants'
 import { Navbar, CharacterCard, Pagination, LoadingGrid, ErrorMessage, HeartOutlineIcon, SearchIcon, ArrowRightIcon } from '@/components'
 import type { Character } from '@/types/character'
@@ -13,11 +13,11 @@ interface FavoritesClientProps {
 }
 
 export function FavoritesClient({ userEmail }: FavoritesClientProps) {
-  const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   
   const debouncedSearchQuery = useDebounce(searchQuery, DEBOUNCE_DELAY)
+  const { currentPage, handlePageChange } = useUrlPagination(1)
   
   const { 
     favoritesList: favorites, 
@@ -52,11 +52,6 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
       totalPages: total,
     }
   }, [favorites, debouncedSearchQuery, statusFilter, currentPage])
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
 
   const favoriteToCharacter = (fav: FavoriteCharacter): Character => ({
     id: String(fav.character_id),
@@ -102,7 +97,7 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value)
-                    setCurrentPage(1)
+                    if (currentPage !== 1) handlePageChange(1)
                   }}
                   placeholder="Search by name..."
                   className="input-sm"
@@ -116,7 +111,7 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
                   value={statusFilter}
                   onChange={(e) => {
                     setStatusFilter(e.target.value)
-                    setCurrentPage(1)
+                    if (currentPage !== 1) handlePageChange(1)
                   }}
                   className="select-base"
                 >

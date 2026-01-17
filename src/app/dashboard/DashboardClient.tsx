@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSupabase } from '@/lib/supabase/hooks'
-import { useFavorites } from '@/lib/hooks'
+import { useFavorites, useUrlPagination } from '@/lib/hooks'
 import { Navbar, CharacterCard, CharacterModal, Pagination, LoadingGrid, ErrorMessage, CharacterFilters, SadFaceIcon } from '@/components'
 import type { FilterValues } from '@/components'
 import type { Character } from '@/types/character'
@@ -13,13 +13,13 @@ interface DashboardClientProps {
 
 export function DashboardClient({ userEmail }: DashboardClientProps) {
   const [characters, setCharacters] = useState<Character[]>([])
-  const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<FilterValues>({ name: '', status: '', species: '' })
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
   
+  const { currentPage, handlePageChange } = useUrlPagination(1)
   const supabase = useSupabase()
   const { toggleFavorite, isFavorite } = useFavorites()
 
@@ -60,18 +60,22 @@ export function DashboardClient({ userEmail }: DashboardClientProps) {
     fetchCharacters(currentPage, filters)
   }, [currentPage, filters, fetchCharacters])
 
-  const handleFilterChange = useCallback((newFilters: FilterValues) => {
-    setFilters(prevFilters => {
-      if (newFilters.name !== prevFilters.name || newFilters.status !== prevFilters.status || newFilters.species !== prevFilters.species) {
-        setCurrentPage(1)
-      }
-      return newFilters
-    })
-  }, [])
+  // Reset to page 1 when filters change (only if not already on page 1)
+  const prevFiltersRef = useRef(filters)
+  useEffect(() => {
+    const filtersChanged = 
+      prevFiltersRef.current.name !== filters.name ||
+      prevFiltersRef.current.status !== filters.status ||
+      prevFiltersRef.current.species !== filters.species
+    
+    if (filtersChanged && currentPage !== 1) {
+      handlePageChange(1)
+    }
+    prevFiltersRef.current = filters
+  }, [filters, currentPage, handlePageChange])
 
-  const handlePageChange = useCallback((page: number) => {
-    setCurrentPage(page)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+  const handleFilterChange = useCallback((newFilters: FilterValues) => {
+    setFilters(newFilters)
   }, [])
 
   return (

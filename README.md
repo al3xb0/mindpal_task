@@ -4,7 +4,7 @@ A Next.js application that allows users to explore Rick and Morty characters and
 
 ## 🚀 Tech Stack
 
-- **Frontend**: Next.js 14+ (App Router), TypeScript, Tailwind CSS
+- **Frontend**: Next.js 16.1+ (App Router), React 19, TypeScript, Tailwind CSS 4
 - **Backend**: Supabase (PostgreSQL + Auth)
 - **Edge Functions**: Deno (Supabase Edge Functions)
 - **API**: Rick & Morty GraphQL API
@@ -35,7 +35,8 @@ A Next.js application that allows users to explore Rick and Morty characters and
 │   │   ├── hooks/                # Custom React hooks
 │   │   │   ├── useDebounce.ts    # Debounce hook for values/callbacks
 │   │   │   ├── useFavorites.ts   # Favorites management with rate limiting
-│   │   │   └── useLock.ts        # Lock mechanism for async operations
+│   │   │   ├── useLock.ts        # Lock mechanism for async operations
+│   │   │   └── useUrlPagination.ts # URL-synced pagination state
 │   │   └── supabase/             # Supabase clients
 │   │       ├── client.ts         # Browser client
 │   │       ├── server.ts         # Server client
@@ -213,11 +214,13 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
 
 7. **Operation Locking**: Favorite toggle buttons use a lock mechanism (per-character) to prevent race conditions from double-clicks.
 
-8. **Accessibility**: Modal component includes focus trap, ARIA attributes, and keyboard navigation support.
+8. **URL-Synced Pagination**: `useUrlPagination` hook keeps pagination state in URL query parameters, enabling deep linking and state sharing.
 
-9. **Rate Limiting**: Client-side rate limiting (1s cooldown) prevents API spam from rapid clicks.
+9. **Accessibility**: Modal component includes focus trap, ARIA attributes, and keyboard navigation support.
 
-10. **Centralized Favorites Hook**: `useFavorites` hook manages all favorites logic with proper error handling, reducing code duplication.
+10. **Rate Limiting**: Client-side rate limiting (1s cooldown) prevents API spam from rapid clicks.
+
+11. **Centralized Favorites Hook**: `useFavorites` hook manages all favorites logic with proper error handling, reducing code duplication.
 
 ## 📝 Features
 
@@ -236,7 +239,8 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
 - ✅ **Active Navigation Links** - Visual indication of current page
 - ✅ **Custom 404 Page** - Rick & Morty themed error page
 - ✅ **Skeleton Loading** - Animated loading cards
-- ✅ **Filters** - Search by name (debounced), status, species
+- ✅ **Filters** - Search by name (debounced), status, species with URL sync
+- ✅ **URL Pagination** - Pagination state reflected in URL for deep linking
 - ✅ **Password Strength Indicator** - Visual password requirements
 - ✅ **Email Confirmation Message** - After signup
 - ✅ **Responsive Design** - Mobile-friendly
@@ -248,6 +252,7 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
 - ✅ **Debounced Search** - Auto-apply filters after 300ms typing pause
 - ✅ **Operation Locking** - Prevents double-click race conditions
 - ✅ **Rate Limiting** - 1s cooldown between favorite operations per character
+- ✅ **URL Pagination Sync** - `useUrlPagination` for deep linking and state sharing
 - ✅ **Centralized Favorites Hook** - `useFavorites` for DRY code
 - ✅ **Accessible Modal** - Focus trap, ARIA attributes, keyboard navigation
 - ✅ **Reusable Icons** - SVG icon components library

@@ -1,4 +1,4 @@
-// @ts-expect-error: Deno URL import
+// deno-lint-ignore no-import-prefix
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const RICK_AND_MORTY_GRAPHQL_URL = "https://rickandmortyapi.com/graphql"
@@ -7,6 +7,25 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+// ─── In-memory response cache (per isolate, 5-minute TTL) ────────────────────
+interface CacheEntry { data: unknown; expiresAt: number }
+const responseCache = new Map<string, CacheEntry>()
+const CACHE_TTL_MS = 5 * 60 * 1000
+
+function getCacheKey(page: number, filter: FilterCharacter | null): string {
+  return `${String(page)}-${JSON.stringify(filter ?? {})}`
+}
+function getCached(key: string): unknown | undefined {
+  const entry = responseCache.get(key)
+  if (!entry) return undefined
+  if (Date.now() > entry.expiresAt) { responseCache.delete(key); return undefined }
+  return entry.data
+}
+function setCache(key: string, data: unknown): void {
+  responseCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS })
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const ALLOWED_STATUS_VALUES = ['Alive', 'Dead', 'unknown'] as const
 const ALLOWED_SPECIES_VALUES = [
@@ -63,7 +82,7 @@ interface ValidationError {
   message: string
 }
 
-function validateFilter(filter: unknown): { valid: FilterCharacter | null; errors: ValidationError[] } {
+export function validateFilter(filter: unknown): { valid: FilterCharacter | null; errors: ValidationError[] } {
   const errors: ValidationError[] = []
   
   if (filter === null || filter === undefined) {
@@ -143,7 +162,7 @@ function validateFilter(filter: unknown): { valid: FilterCharacter | null; error
   }
 }
 
-serve(async (req: Request): Promise<Response> => {
+export async function handleRequest(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -187,6 +206,25 @@ serve(async (req: Request): Promise<Response> => {
         }
       )
     }
+
+    // ── Cache lookup ────────────────────────────────────────────────────────
+    const cacheKey = getCacheKey(pageNum, validFilter)
+    const cached = getCached(cacheKey)
+    if (cached !== undefined) {
+      return new Response(
+        JSON.stringify(cached),
+        {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'X-Cache': 'HIT',
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
+          },
+        },
+      )
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // GraphQL query
     const query: string = `
@@ -251,25 +289,31 @@ serve(async (req: Request): Promise<Response> => {
       )
     }
 
+    setCache(cacheKey, data.data)
     return new Response(
       JSON.stringify(data.data),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'X-Cache': 'MISS',
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
+        },
+      },
     )
 
   } catch (error: unknown) {
     console.error('Error in get-characters function:', error)
-    
     return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'An unexpected error occurred' 
+      JSON.stringify({
+        error: error instanceof Error ? error.message : 'An unexpected error occurred',
       }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
-})
+}
+
+if (import.meta.main) {
+  serve(handleRequest)
+}

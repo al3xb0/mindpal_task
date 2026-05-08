@@ -468,3 +468,45 @@ export function LogoutIcon({ className = 'w-5 h-5', size }: IconProps) {
     </svg>
   )
 }
+
+export function DownloadIcon({ className = 'w-5 h-5', size }: IconProps) {
+  const sizeStyle = size ? { width: size, height: size } : undefined
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      style={sizeStyle}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+      />
+    </svg>
+  )
+}
+
+export function ScaleIcon({ className = 'w-5 h-5', size }: IconProps) {
+  const sizeStyle = size ? { width: size, height: size } : undefined
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      style={sizeStyle}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"
+      />
+    </svg>
+  )
+}

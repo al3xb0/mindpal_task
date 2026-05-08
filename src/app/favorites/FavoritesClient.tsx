@@ -1,10 +1,13 @@
-﻿'use client'
+'use client'
 
 import { useState, useMemo, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useDebounce, useFavorites } from '@/lib/hooks'
 import { DEBOUNCE_DELAY, CHARACTER_STATUS } from '@/lib/constants'
-import { Navbar, CharacterCard, ErrorMessage, LoadingGrid, HeartOutlineIcon, SearchIcon, ArrowRightIcon } from '@/components'
+import {
+  Navbar, CharacterCard, ErrorMessage, LoadingGrid, HeartOutlineIcon,
+  SearchIcon, ArrowRightIcon, DownloadIcon,
+} from '@/components'
 import type { Character } from '@/types/character'
 import type { FavoriteCharacter } from '@/types/database'
 import Link from 'next/link'
@@ -33,9 +36,58 @@ function favoriteToCharacter(fav: FavoriteCharacter): Character {
   }
 }
 
+function downloadFile(content: string, filename: string, type: string): void {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function exportToJson(favs: FavoriteCharacter[]): void {
+  const data = favs.map((f) => ({
+    id: f.character_id,
+    name: f.character_name,
+    status: f.character_status,
+    species: f.character_species,
+    image: f.character_image,
+    savedAt: f.created_at,
+  }))
+  downloadFile(
+    JSON.stringify(data, null, 2),
+    `favorites-${new Date().toISOString().split('T')[0]}.json`,
+    'application/json',
+  )
+}
+
+function exportToCsv(favs: FavoriteCharacter[]): void {
+  const headers = ['ID', 'Name', 'Status', 'Species', 'Image URL', 'Saved At']
+  const rows = favs.map((f) => [
+    String(f.character_id),
+    f.character_name,
+    f.character_status ?? '',
+    f.character_species ?? '',
+    f.character_image ?? '',
+    f.created_at,
+  ])
+  const csv = [headers, ...rows]
+    .map((row) => row.map((v) => `"${v.replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  downloadFile(
+    csv,
+    `favorites-${new Date().toISOString().split('T')[0]}.csv`,
+    'text/csv;charset=utf-8;',
+  )
+}
+
 export function FavoritesClient({ userEmail }: FavoritesClientProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
   const debouncedSearchQuery = useDebounce(searchQuery, DEBOUNCE_DELAY)
   const { favoritesList: favorites, loading, error, removeFavorite, refetch } = useFavorites()
@@ -44,10 +96,10 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
     let filtered = favorites
     if (debouncedSearchQuery) {
       const q = debouncedSearchQuery.toLowerCase()
-      filtered = filtered.filter(f => f.character_name.toLowerCase().includes(q))
+      filtered = filtered.filter((f) => f.character_name.toLowerCase().includes(q))
     }
     if (statusFilter) {
-      filtered = filtered.filter(f => f.character_status === statusFilter)
+      filtered = filtered.filter((f) => f.character_status === statusFilter)
     }
     return filtered
   }, [favorites, debouncedSearchQuery, statusFilter])
@@ -69,11 +121,50 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
       <Navbar userEmail={userEmail} />
 
       <main className="content-container">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white">Your Favorites</h1>
-          <p className="text-gray-400 mt-2">
-            {favorites.length} character{favorites.length !== 1 ? 's' : ''} in your collection
-          </p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold text-white">Your Favorites</h1>
+            <p className="text-gray-400 mt-2">
+              {favorites.length} character{favorites.length !== 1 ? 's' : ''} in your collection
+            </p>
+          </div>
+
+          {favorites.length > 0 && (
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setShowExportMenu((v) => !v)}
+                className="inline-flex items-center gap-2 btn-secondary"
+                aria-label="Export favorites"
+                aria-expanded={showExportMenu}
+                aria-haspopup="true"
+              >
+                <DownloadIcon className="w-4 h-4" />
+                Export
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 mt-2 w-40 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white rounded-t-lg"
+                    onClick={() => {
+                      exportToJson(favorites)
+                      setShowExportMenu(false)
+                    }}
+                  >
+                    Export as JSON
+                  </button>
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white rounded-b-lg"
+                    onClick={() => {
+                      exportToCsv(favorites)
+                      setShowExportMenu(false)
+                    }}
+                  >
+                    Export as CSV
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {favorites.length > 0 && (
@@ -175,4 +266,3 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
     </div>
   )
 }
-

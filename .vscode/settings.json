@@ -1,0 +1,7 @@
+{
+  // Enable Deno language server only for Edge Function files.
+  // The main Next.js project continues to use the TypeScript language server.
+  "deno.enablePaths": ["supabase/functions"],
+  "deno.lint": true,
+  "deno.unstable": []
+}

@@ -5,28 +5,33 @@ A Next.js application that allows users to explore Rick and Morty characters and
 ## 🚀 Tech Stack
 
 - **Frontend**: Next.js 16.1+ (App Router), React 19, TypeScript, Tailwind CSS 4
+- **State Management**: TanStack Query v5 (server state, optimistic updates, infinite scroll)
+- **Virtualization**: TanStack Virtual v3 (windowed grid for large favorites lists)
+- **Validation**: Zod v4 (runtime schema validation)
 - **Backend**: Supabase (PostgreSQL + Auth)
-- **Edge Functions**: Deno (Supabase Edge Functions)
+- **Edge Functions**: Deno (Supabase Edge Functions, in-memory caching)
 - **API**: Rick & Morty GraphQL API
+- **Testing**: Vitest + React Testing Library (unit/component), Playwright (E2E), Deno test (Edge Functions)
 
 ## 📁 Project Structure
 
 ```
 ├── src/                          # Frontend (Next.js)
 │   ├── app/                      # App Router pages
-│   │   ├── dashboard/            # Characters list page
-│   │   ├── favorites/            # User favorites page
+│   │   ├── dashboard/            # Characters list with infinite scroll
+│   │   ├── favorites/            # User favorites with export
 │   │   ├── login/                # Login page
 │   │   ├── signup/               # Sign up page
 │   │   └── not-found.tsx         # Custom 404 page
 │   ├── components/               # React components
-│   │   ├── CharacterCard.tsx     # Character display card (clickable)
+│   │   ├── CharacterCard.tsx     # Character card (favorite + comparison buttons)
 │   │   ├── CharacterModal.tsx    # Character details modal (accessible)
-│   │   ├── CharacterFilters.tsx  # Search and filter controls (debounced)
+│   │   ├── CharacterFilters.tsx  # Search/filter controls (debounced, URL-synced)
+│   │   ├── ComparisonModal.tsx   # Side-by-side character comparison (2–3 chars)
 │   │   ├── ErrorBoundary.tsx     # Global error boundary
 │   │   ├── Loading.tsx           # Skeleton loaders
 │   │   ├── Navbar.tsx            # Navigation with active links
-│   │   ├── Pagination.tsx        # Page navigation
+│   │   ├── Pagination.tsx        # Page navigation (legacy)
 │   │   ├── PasswordStrength.tsx  # Password requirements indicator
 │   │   ├── Toast.tsx             # Toast notification system
 │   │   └── icons/                # Reusable SVG icon components
@@ -34,20 +39,40 @@ A Next.js application that allows users to explore Rick and Morty characters and
 │   │   ├── constants.ts          # Centralized constants
 │   │   ├── hooks/                # Custom React hooks
 │   │   │   ├── useDebounce.ts    # Debounce hook for values/callbacks
-│   │   │   ├── useFavorites.ts   # Favorites management with rate limiting
+│   │   │   ├── useFavorites.ts   # Favorites with TanStack Query optimistic updates
+│   │   │   ├── useUrlFilters.ts  # URL-synced filter state (clean URLs)
+│   │   │   ├── useInfiniteCharactersQuery.ts # Infinite scroll query hook
+│   │   │   ├── useCharactersQuery.ts  # Paginated query (legacy)
+│   │   │   ├── useCurrentUser.ts # Auth user hook
 │   │   │   ├── useLock.ts        # Lock mechanism for async operations
-│   │   │   └── useUrlPagination.ts # URL-synced pagination state
+│   │   │   └── useUrlPagination.ts # URL-synced pagination (legacy)
+│   │   ├── providers.tsx         # QueryClientProvider wrapper
+│   │   ├── schemas.ts            # Zod validation schemas
+│   │   ├── logger.ts             # Structured logger
 │   │   └── supabase/             # Supabase clients
 │   │       ├── client.ts         # Browser client
 │   │       ├── server.ts         # Server client
 │   │       ├── middleware.ts     # Middleware client
 │   │       └── hooks.ts          # useSupabase singleton hook
+│   ├── test/                     # Test setup
+│   │   └── setup.ts              # Vitest global setup
 │   └── types/                    # TypeScript types
 │
 ├── supabase/                     # Backend (Supabase)
 │   ├── functions/                # Edge Functions
-│   │   └── get-characters/       # GraphQL proxy with validation
+│   │   └── get-characters/       # GraphQL proxy with validation + in-memory cache
+│   │       ├── index.ts          # Function handler (exported for testing)
+│   │       └── index.test.ts     # Deno unit tests
 │   └── migrations/               # SQL migrations
+│
+├── tests/                        # E2E tests
+│   └── e2e/
+│       ├── auth.spec.ts          # Auth flows (login, signup, redirect)
+│       └── favorites.spec.ts     # Favorites flows (add, remove, export, filter)
+│
+├── vitest.config.ts              # Vitest configuration
+└── playwright.config.ts          # Playwright configuration
+```
 ```
 
 ## 🛠️ Setup Instructions
@@ -146,6 +171,10 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 |----------|-------------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous (anon) key |
+| `NEXT_PUBLIC_APP_URL` | (Optional) Canonical app URL for OG metadata |
+| `E2E_TEST_EMAIL` | (E2E only) Test account email |
+| `E2E_TEST_PASSWORD` | (E2E only) Test account password |
+| `PLAYWRIGHT_BASE_URL` | (E2E only) Base URL for Playwright (default: `http://localhost:3000`) |
 
 ## 📊 Database Schema
 
@@ -177,9 +206,12 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL API:
 
 - Fetches paginated character data
-- Validates input parameters
+- Validates input parameters against a strict whitelist
+- **In-memory caching** (5-minute TTL) with `X-Cache: HIT/MISS` response header
+- Adds `Cache-Control: public, s-maxage=300, stale-while-revalidate=60` for CDN caching
 - Handles errors gracefully
 - Returns formatted JSON response
+- Exports `validateFilter` and `handleRequest` for unit testing (Deno test)
 
 **Endpoint**: `POST /functions/v1/get-characters`
 
@@ -201,63 +233,67 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
    - Rate limiting control
    - Server-side error handling
    - **Input validation** (filter values validated against whitelist)
+   - **In-memory response caching** (5-minute TTL, Cache-Control headers)
 
-2. **Supabase SSR**: Using `@supabase/ssr` for proper server-side rendering and cookie-based authentication in Next.js App Router.
+2. **TanStack Query v5**: Server state managed with `useQuery`, `useMutation`, and `useInfiniteQuery`. Provides automatic cache invalidation, background refetching, and optimistic updates for favorites.
 
-3. **Row Level Security**: Database-level security ensures users can only access their own data, even if the client is compromised.
+3. **Infinite Scroll**: Dashboard uses `useInfiniteCharactersQuery` (TanStack Query `useInfiniteQuery`) with an `IntersectionObserver` sentinel element at the bottom of the grid to auto-load the next page.
 
-4. **Middleware Protection**: Routes `/dashboard` and `/favorites` are protected at the middleware level, redirecting unauthenticated users to login.
+4. **URL-Synced Filters**: `useUrlFilters` keeps filter state in URL search params. Empty params are removed to keep URLs clean. This enables deep linking and back-button support.
 
-5. **Singleton Supabase Client**: Custom `useSupabase` hook ensures only one Supabase client instance per browser session, preventing memory leaks.
+5. **Character Comparison**: Select 2–3 characters using the compare button on each card. A floating action bar appears and opens `ComparisonModal` showing a side-by-side attribute table.
 
-6. **Debounced Filters**: Search input uses debounce (300ms delay) to reduce API calls while typing.
+6. **Export Favorites**: Favorites can be exported as JSON or CSV via a dropdown button. Pure client-side — uses `Blob` + `URL.createObjectURL`, no server round-trip.
 
-7. **Operation Locking**: Favorite toggle buttons use a lock mechanism (per-character) to prevent race conditions from double-clicks.
+7. **Virtualized Favorites Grid**: When the favorites list exceeds 50 items, TanStack Virtual renders only visible rows, preventing DOM bloat.
 
-8. **URL-Synced Pagination**: `useUrlPagination` hook keeps pagination state in URL query parameters, enabling deep linking and state sharing.
+8. **Supabase SSR**: Using `@supabase/ssr` for proper server-side rendering and cookie-based authentication in Next.js App Router.
 
-9. **Accessibility**: Modal component includes focus trap, ARIA attributes, and keyboard navigation support.
+9. **Row Level Security**: Database-level security ensures users can only access their own data, even if the client is compromised.
 
-10. **Rate Limiting**: Client-side rate limiting (1s cooldown) prevents API spam from rapid clicks.
+10. **Middleware Protection**: Routes `/dashboard` and `/favorites` are protected at the middleware level, redirecting unauthenticated users to login.
 
-11. **Centralized Favorites Hook**: `useFavorites` hook manages all favorites logic with proper error handling, reducing code duplication.
+11. **Debounced Filters**: Search input uses debounce (300ms delay) to reduce API calls while typing.
+
+12. **Accessibility**: Modal components include focus trap, ARIA attributes, and keyboard navigation support.
 
 ## 📝 Features
 
 ### Core Features
 - ✅ User authentication (Sign up / Login)
 - ✅ Protected routes with middleware
-- ✅ Character listing with pagination
-- ✅ Add/Remove favorites (one-click with lock)
-- ✅ Favorites page with pagination
+- ✅ Character listing with **infinite scroll** (auto-loads next page)
+- ✅ Add/Remove favorites (optimistic updates via TanStack Query)
+- ✅ Favorites page with virtual grid (>50 items)
 - ✅ Row Level Security (users own data only)
-- ✅ Edge Function for GraphQL proxy with validation
+- ✅ Edge Function for GraphQL proxy with validation + **in-memory caching**
+
+### New Features
+- ✅ **Infinite Scroll** — no pagination buttons; characters load as you scroll
+- ✅ **URL-synced Filters** — name/status/species reflected in URL; empty params removed (clean URLs)
+- ✅ **Character Comparison** — select 2–3 characters for side-by-side comparison modal
+- ✅ **Export Favorites** — download your favorites list as JSON or CSV
 
 ### UI/UX Features
-- ✅ **Character Details Modal** - Click on any card to see detailed info (gender, origin, location, episode count)
+- ✅ **Character Details Modal** - Click on any card to see detailed info
 - ✅ **Toast Notifications** - Feedback on add/remove favorites
 - ✅ **Active Navigation Links** - Visual indication of current page
 - ✅ **Custom 404 Page** - Rick & Morty themed error page
 - ✅ **Skeleton Loading** - Animated loading cards
-- ✅ **Filters** - Search by name (debounced), status, species with URL sync
-- ✅ **URL Pagination** - Pagination state reflected in URL for deep linking
 - ✅ **Password Strength Indicator** - Visual password requirements
-- ✅ **Email Confirmation Message** - After signup
 - ✅ **Responsive Design** - Mobile-friendly
-- ✅ **Dark Theme** - Modern dark UI with green accents
+- ✅ **Dark Theme** - Modern dark UI
 
 ### Architecture Features
-- ✅ **Error Boundary** - Global error handling with recovery UI
-- ✅ **Singleton Supabase Client** - Prevents multiple client instances
-- ✅ **Debounced Search** - Auto-apply filters after 300ms typing pause
-- ✅ **Operation Locking** - Prevents double-click race conditions
-- ✅ **Rate Limiting** - 1s cooldown between favorite operations per character
-- ✅ **URL Pagination Sync** - `useUrlPagination` for deep linking and state sharing
-- ✅ **Centralized Favorites Hook** - `useFavorites` for DRY code
-- ✅ **Accessible Modal** - Focus trap, ARIA attributes, keyboard navigation
-- ✅ **Reusable Icons** - SVG icon components library
-- ✅ **Centralized Constants** - No magic strings
-- ✅ **Common CSS Classes** - Reusable Tailwind utilities
+- ✅ **TanStack Query v5** — server state, cache, optimistic updates
+- ✅ **TanStack Virtual v3** — windowed grid for large favorites lists
+- ✅ **Zod Validation** — runtime schema validation at boundaries
+- ✅ **Error Boundary** — Global error handling with recovery UI
+- ✅ **Debounced Search** — Auto-apply filters after 300ms typing pause
+- ✅ **Operation Locking** — Prevents double-click race conditions
+- ✅ **Accessible Modals** — Focus trap, ARIA attributes, keyboard navigation
+- ✅ **Reusable Icons** — SVG icon components library
+- ✅ **Centralized Constants** — No magic strings
 
 ## 🖼️ Screenshots
 
@@ -285,9 +321,29 @@ Personal collection with local search and status filter.
 ## 🧪 Testing
 
 ```bash
-npm run build   # Check for TypeScript errors
-npm run lint    # Run ESLint
+# Unit and component tests (Vitest + React Testing Library)
+npm test
+
+# Run tests with coverage report
+npm run test:coverage
+
+# E2E tests (Playwright) — requires a running dev server or uses webServer config
+npm run test:e2e
+
+# Edge Function tests (Deno)
+deno test supabase/functions/get-characters/index.test.ts
+
+# Type-check and lint
+npm run build
+npm run lint
 ```
+
+**Test coverage includes:**
+- Hook unit tests: `useDebounce`, `useUrlPagination`, `useFavorites`
+- Component tests: `CharacterCard`, `CharacterFilters`, `CharacterModal`
+- E2E auth flow: login, signup, redirect protection
+- E2E favorites flow: add/remove favorites, search, filter, export
+- Edge Function: `validateFilter` and `handleRequest` handler tests
 
 ## 🔧 Supabase CLI Commands
 

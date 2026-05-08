@@ -7,7 +7,8 @@ import { FilterIcon, ChevronDownIcon } from '@/components'
 
 interface CharacterFiltersProps {
   onFilterChange: (filters: FilterValues) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
+  defaultValues?: FilterValues | undefined
 }
 
 export interface FilterValues {
@@ -16,13 +17,11 @@ export interface FilterValues {
   species: string
 }
 
-export const CharacterFilters = memo(function CharacterFilters({ onFilterChange, disabled }: CharacterFiltersProps) {
+export const CharacterFilters = memo(function CharacterFilters({ onFilterChange, disabled, defaultValues }: CharacterFiltersProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [filters, setFilters] = useState<FilterValues>({
-    name: '',
-    status: '',
-    species: '',
-  })
+  const [filters, setFilters] = useState<FilterValues>(
+    defaultValues ?? { name: '', status: '', species: '' },
+  )
   
   const debouncedName = useDebounce(filters.name, DEBOUNCE_DELAY)
   

@@ -7,6 +7,7 @@ export { ErrorMessage } from './ErrorMessage'
 export { PasswordStrength } from './PasswordStrength'
 export { CharacterFilters } from './CharacterFilters'
 export { ErrorBoundary } from './ErrorBoundary'
+export { ComparisonModal } from './ComparisonModal'
 export type { FilterValues } from './CharacterFilters'
 
 // Icons

@@ -125,7 +125,7 @@ export const CharacterModal = memo(function CharacterModal({
             sizes="(max-width: 768px) 100vw, 672px"
             priority
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-800 via-gray-800/50 to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-t from-gray-800 via-gray-800/50 to-transparent" />
           
           {/* Character name overlay */}
           <div className="absolute bottom-4 left-6 right-6">

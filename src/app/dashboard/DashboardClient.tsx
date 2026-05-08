@@ -1,8 +1,7 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSupabase } from '@/lib/supabase/hooks'
-import { useFavorites, useUrlPagination } from '@/lib/hooks'
+import { useFavorites, useUrlPagination, useCharactersQuery } from '@/lib/hooks'
 import { Navbar, CharacterCard, CharacterModal, Pagination, LoadingGrid, ErrorMessage, CharacterFilters, SadFaceIcon } from '@/components'
 import type { FilterValues } from '@/components'
 import type { Character } from '@/types/character'
@@ -12,63 +11,23 @@ interface DashboardClientProps {
 }
 
 export function DashboardClient({ userEmail }: DashboardClientProps) {
-  const [characters, setCharacters] = useState<Character[]>([])
-  const [totalPages, setTotalPages] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<FilterValues>({ name: '', status: '', species: '' })
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
-  
+
   const { currentPage, handlePageChange } = useUrlPagination(1)
-  const supabase = useSupabase()
   const { toggleFavorite, isFavorite } = useFavorites()
+  const { data, isLoading, isFetching, error, refetch } = useCharactersQuery(currentPage, filters)
 
-  const fetchCharacters = useCallback(async (page: number, currentFilters: FilterValues) => {
-    setLoading(true)
-    setError(null)
+  const characters = data?.characters?.results ?? []
+  const totalPages = data?.characters?.info?.pages ?? 1
 
-    try {
-      const filter: Record<string, string> = {}
-      if (currentFilters.name) filter.name = currentFilters.name
-      if (currentFilters.status) filter.status = currentFilters.status
-      if (currentFilters.species) filter.species = currentFilters.species
-
-      const { data, error: fnError } = await supabase.functions.invoke(
-        'get-characters',
-        { body: { page, filter: Object.keys(filter).length > 0 ? filter : null } }
-      )
-
-      if (fnError) {
-        throw new Error(fnError.message)
-      }
-
-      if (data?.characters) {
-        setCharacters(data.characters.results)
-        setTotalPages(data.characters.info.pages)
-      } else {
-        setCharacters([])
-        setTotalPages(1)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch characters')
-    } finally {
-      setLoading(false)
-    }
-  }, [supabase])
-
-  useEffect(() => {
-    fetchCharacters(currentPage, filters)
-  }, [currentPage, filters, fetchCharacters])
-
-  // Reset to page 1 when filters change (only if not already on page 1)
   const prevFiltersRef = useRef(filters)
   useEffect(() => {
-    const filtersChanged = 
+    const changed =
       prevFiltersRef.current.name !== filters.name ||
       prevFiltersRef.current.status !== filters.status ||
       prevFiltersRef.current.species !== filters.species
-    
-    if (filtersChanged && currentPage !== 1) {
+    if (changed && currentPage !== 1) {
       handlePageChange(1)
     }
     prevFiltersRef.current = filters
@@ -81,7 +40,7 @@ export function DashboardClient({ userEmail }: DashboardClientProps) {
   return (
     <div className="page-container">
       <Navbar userEmail={userEmail} />
-      
+
       <main className="content-container">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white">Characters</h1>
@@ -92,12 +51,12 @@ export function DashboardClient({ userEmail }: DashboardClientProps) {
 
         <CharacterFilters onFilterChange={handleFilterChange} />
 
-        {loading ? (
+        {isLoading ? (
           <LoadingGrid />
         ) : error ? (
           <ErrorMessage
-            message={error}
-            onRetry={() => fetchCharacters(currentPage, filters)}
+            message={error instanceof Error ? error.message : 'Failed to fetch characters'}
+            onRetry={() => void refetch()}
           />
         ) : characters.length === 0 ? (
           <div className="empty-state">
@@ -109,6 +68,9 @@ export function DashboardClient({ userEmail }: DashboardClientProps) {
           </div>
         ) : (
           <>
+            {isFetching && !isLoading && (
+              <p className="text-gray-500 text-xs mb-2">UpdatingвЂ¦</p>
+            )}
             <p className="text-gray-500 text-sm mb-4">Click on a card to see more details</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {characters.map((character) => (
@@ -141,3 +103,4 @@ export function DashboardClient({ userEmail }: DashboardClientProps) {
     </div>
   )
 }
+

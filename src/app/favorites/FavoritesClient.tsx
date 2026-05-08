@@ -1,9 +1,10 @@
-'use client'
+﻿'use client'
 
-import { useState, useMemo } from 'react'
-import { useDebounce, useFavorites, useUrlPagination } from '@/lib/hooks'
-import { PAGINATION, CHARACTER_STATUS, DEBOUNCE_DELAY } from '@/lib/constants'
-import { Navbar, CharacterCard, Pagination, LoadingGrid, ErrorMessage, HeartOutlineIcon, SearchIcon, ArrowRightIcon } from '@/components'
+import { useState, useMemo, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { useDebounce, useFavorites } from '@/lib/hooks'
+import { DEBOUNCE_DELAY, CHARACTER_STATUS } from '@/lib/constants'
+import { Navbar, CharacterCard, ErrorMessage, LoadingGrid, HeartOutlineIcon, SearchIcon, ArrowRightIcon } from '@/components'
 import type { Character } from '@/types/character'
 import type { FavoriteCharacter } from '@/types/database'
 import Link from 'next/link'
@@ -12,107 +13,87 @@ interface FavoritesClientProps {
   userEmail?: string | undefined
 }
 
-export function FavoritesClient({ userEmail }: FavoritesClientProps) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  
-  const debouncedSearchQuery = useDebounce(searchQuery, DEBOUNCE_DELAY)
-  const { currentPage, handlePageChange } = useUrlPagination(1)
-  
-  const { 
-    favoritesList: favorites, 
-    loading, 
-    error, 
-    removeFavorite,
-    refetch 
-  } = useFavorites()
+const GRID_COLUMNS = 4
+const CARD_ROW_HEIGHT = 344
+const VIRTUAL_THRESHOLD = 50
 
-  const { filteredFavorites, totalPages } = useMemo(() => {
-    let filtered = favorites
-
-    if (debouncedSearchQuery) {
-      filtered = filtered.filter(f => 
-        f.character_name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-      )
-    }
-
-    if (statusFilter) {
-      filtered = filtered.filter(f => f.character_status === statusFilter)
-    }
-
-    const total = Math.ceil(filtered.length / PAGINATION.ITEMS_PER_PAGE) || 1
-    
-    const safePage = currentPage > total ? 1 : currentPage
-    
-    const from = (safePage - 1) * PAGINATION.ITEMS_PER_PAGE
-    const to = from + PAGINATION.ITEMS_PER_PAGE
-    
-    return {
-      filteredFavorites: filtered.slice(from, to),
-      totalPages: total,
-    }
-  }, [favorites, debouncedSearchQuery, statusFilter, currentPage])
-
-  const favoriteToCharacter = (fav: FavoriteCharacter): Character => ({
+function favoriteToCharacter(fav: FavoriteCharacter): Character {
+  return {
     id: String(fav.character_id),
     name: fav.character_name,
-    image: fav.character_image || '/placeholder.svg',
-    status: (fav.character_status as Character['status']) || 'unknown',
-    species: fav.character_species || 'Unknown',
+    image: fav.character_image ?? '/placeholder.svg',
+    status: (fav.character_status as Character['status']) ?? 'unknown',
+    species: fav.character_species ?? 'Unknown',
     type: '',
     gender: 'unknown',
     origin: { name: 'Unknown' },
     location: { name: 'Unknown' },
     episode: [],
     created: '',
-  })
+  }
+}
 
-  const totalFavorites = favorites.length
+export function FavoritesClient({ userEmail }: FavoritesClientProps) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+
+  const debouncedSearchQuery = useDebounce(searchQuery, DEBOUNCE_DELAY)
+  const { favoritesList: favorites, loading, error, removeFavorite, refetch } = useFavorites()
+
+  const filteredFavorites = useMemo(() => {
+    let filtered = favorites
+    if (debouncedSearchQuery) {
+      const q = debouncedSearchQuery.toLowerCase()
+      filtered = filtered.filter(f => f.character_name.toLowerCase().includes(q))
+    }
+    if (statusFilter) {
+      filtered = filtered.filter(f => f.character_status === statusFilter)
+    }
+    return filtered
+  }, [favorites, debouncedSearchQuery, statusFilter])
+
+  const useVirtual = filteredFavorites.length > VIRTUAL_THRESHOLD
+  const rowCount = Math.ceil(filteredFavorites.length / GRID_COLUMNS)
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const rowVirtualizer = useVirtualizer({
+    count: useVirtual ? rowCount : 0,
+    getScrollElement: () => (useVirtual ? parentRef.current : null),
+    estimateSize: () => CARD_ROW_HEIGHT,
+    overscan: 3,
+  })
 
   return (
     <div className="page-container">
       <Navbar userEmail={userEmail} />
-      
+
       <main className="content-container">
         <div className="mb-8">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <h1 className="text-4xl font-bold text-white">Your Favorites</h1>
-              <p className="text-gray-400 mt-2">
-                {totalFavorites} character{totalFavorites !== 1 ? 's' : ''} in your collection
-              </p>
-            </div>
-          </div>
+          <h1 className="text-4xl font-bold text-white">Your Favorites</h1>
+          <p className="text-gray-400 mt-2">
+            {favorites.length} character{favorites.length !== 1 ? 's' : ''} in your collection
+          </p>
         </div>
 
         {favorites.length > 0 && (
           <div className="filter-panel mb-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Search
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Search</label>
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value)
-                    if (currentPage !== 1) handlePageChange(1)
-                  }}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by name..."
                   className="input-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Status
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Status</label>
                 <select
                   value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value)
-                    if (currentPage !== 1) handlePageChange(1)
-                  }}
+                  onChange={(e) => setStatusFilter(e.target.value)}
                   className="select-base"
                 >
                   <option value="">All statuses</option>
@@ -128,10 +109,7 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
         {loading ? (
           <LoadingGrid />
         ) : error ? (
-          <ErrorMessage
-            message={error}
-            onRetry={refetch}
-          />
+          <ErrorMessage message={error} onRetry={refetch} />
         ) : favorites.length === 0 ? (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-800 mb-6">
@@ -141,10 +119,7 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
             <p className="text-gray-400 mb-6">
               Start exploring and add characters to your collection!
             </p>
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-2 btn-primary"
-            >
+            <Link href="/dashboard" className="inline-flex items-center gap-2 btn-primary">
               <ArrowRightIcon className="h-5 w-5" />
               Explore Characters
             </Link>
@@ -157,29 +132,47 @@ export function FavoritesClient({ userEmail }: FavoritesClientProps) {
             <h3 className="text-xl font-medium text-white">No matches found</h3>
             <p className="text-gray-400 mt-2">Try adjusting your search or filters</p>
           </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {filteredFavorites.map((favorite) => (
-                <CharacterCard
-                  key={favorite.id}
-                  character={favoriteToCharacter(favorite)}
-                  isFavorite={true}
-                  onToggleFavorite={removeFavorite}
-                />
-              ))}
+        ) : useVirtual ? (
+          <div ref={parentRef} className="overflow-auto" style={{ height: '75vh' }}>
+            <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const from = virtualRow.index * GRID_COLUMNS
+                const rowItems = filteredFavorites.slice(from, from + GRID_COLUMNS)
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                    style={{ position: 'absolute', top: virtualRow.start, left: 0, width: '100%' }}
+                    className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-6"
+                  >
+                    {rowItems.map((fav) => (
+                      <CharacterCard
+                        key={fav.id}
+                        character={favoriteToCharacter(fav)}
+                        isFavorite={true}
+                        onToggleFavorite={removeFavorite}
+                      />
+                    ))}
+                  </div>
+                )
+              })}
             </div>
-
-            {totalPages > 1 && (
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={handlePageChange}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {filteredFavorites.map((fav) => (
+              <CharacterCard
+                key={fav.id}
+                character={favoriteToCharacter(fav)}
+                isFavorite={true}
+                onToggleFavorite={removeFavorite}
               />
-            )}
-          </>
+            ))}
+          </div>
         )}
       </main>
     </div>
   )
 }
+

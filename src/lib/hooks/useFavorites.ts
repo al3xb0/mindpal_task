@@ -1,282 +1,213 @@
-'use client'
+﻿'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useRef } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { v4 as uuidv4 } from 'uuid'
 import { useSupabase } from '@/lib/supabase/hooks'
 import { useToast } from '@/components/Toast'
+import { useCurrentUser } from './useCurrentUser'
+import { logger } from '@/lib/logger'
 import type { Character } from '@/types/character'
 import type { FavoriteCharacter } from '@/types/database'
 
 const RATE_LIMIT_MS = 1000
 
-interface UseFavoritesOptions {
-  fetchOnMount?: boolean
+interface ToggleVars {
+  character: Character
+  userId: string
 }
 
-interface UseFavoritesReturn {
-  favoritesList: FavoriteCharacter[]
-  loading: boolean
-  error: string | null
-  toggleFavorite: (character: Character) => Promise<void>
-  removeFavorite: (character: Character) => Promise<void>
-  isFavorite: (characterId: number) => boolean
-  refetch: () => Promise<void>
-}
+type FavoritesList = FavoriteCharacter[]
 
-/**
- * Hook for managing user's favorite characters
- * Handles add/remove operations with rate limiting and optimistic updates
- */
-export function useFavorites(options: UseFavoritesOptions = {}): UseFavoritesReturn {
-  const { fetchOnMount = true } = options
-  
-  const [favoritesList, setFavoritesList] = useState<FavoriteCharacter[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  
-  const operationsInProgress = useRef<Set<number>>(new Set())
-  const lastOperationTime = useRef<Map<number, number>>(new Map())
-  
+export function useFavorites() {
   const supabase = useSupabase()
+  const queryClient = useQueryClient()
   const { showToast } = useToast()
+  const { data: user } = useCurrentUser()
+  const lastOperationTime = useRef<Map<number, number>>(new Map())
 
-  /**
-   * Fetch all favorites for the current user
-   */
-  const fetchFavorites = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const userId = user?.id
+  const queryKey = ['favorites', userId] as const
 
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError) {
-        throw new Error('Failed to get user: ' + userError.message)
-      }
-      
-      if (!user) {
-        setFavoritesList([])
-        return
-      }
-
-      const { data, error: fetchError } = await supabase
+  const {
+    data: favoritesList = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery<FavoritesList>({
+    queryKey,
+    queryFn: async () => {
+      if (!userId) return []
+      const { data, error } = await supabase
         .from('favorite_characters')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
-
-      if (fetchError) {
-        throw new Error('Failed to fetch favorites: ' + fetchError.message)
+      if (error) {
+        logger.error('Failed to fetch favorites', { userId, error: error.message })
+        throw new Error(error.message)
       }
+      return data ?? []
+    },
+    enabled: !!userId,
+    staleTime: 30 * 1000,
+  })
 
-      setFavoritesList(data || [])
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch favorites'
-      setError(message)
-      console.error('useFavorites error:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [supabase])
-
-  /**
-   * Check if operation is rate limited
-   */
-  const isRateLimited = (characterId: number): boolean => {
-    const lastTime = lastOperationTime.current.get(characterId)
-    if (!lastTime) return false
-    return Date.now() - lastTime < RATE_LIMIT_MS
-  }
-
-  /**
-   * Add a character to favorites
-   */
-  const addFavorite = useCallback(async (character: Character, userId: string): Promise<boolean> => {
-    const { error } = await supabase
-      .from('favorite_characters')
-      .insert({
-        user_id: userId,
-        character_id: parseInt(character.id),
-        character_name: character.name,
-        character_image: character.image,
-        character_status: character.status,
-        character_species: character.species,
-      })
-
-    if (error) {
-      console.error('Failed to add favorite:', error)
-      return false
-    }
-    return true
-  }, [supabase])
-
-  /**
-   * Remove a character from favorites
-   */
-  const deleteFavorite = useCallback(async (characterId: number, userId: string): Promise<boolean> => {
-    const { error } = await supabase
-      .from('favorite_characters')
-      .delete()
-      .eq('user_id', userId)
-      .eq('character_id', characterId)
-
-    if (error) {
-      console.error('Failed to remove favorite:', error)
-      return false
-    }
-    return true
-  }, [supabase])
-
-  /**
-   * Helper function to handle removal logic
-   */
-  const handleRemove = useCallback(async (characterId: number, characterName: string, userId: string): Promise<boolean> => {
-    operationsInProgress.current.add(characterId)
-    lastOperationTime.current.set(characterId, Date.now())
-    
-    try {
-      const success = await deleteFavorite(characterId, userId)
-      
-      if (success) {
-        setFavoritesList(prev => prev.filter(f => f.character_id !== characterId))
-        showToast(`${characterName} removed from favorites`, 'info')
-        return true
-      } else {
-        showToast('Failed to remove from favorites', 'error')
-        return false
-      }
-    } finally {
-      operationsInProgress.current.delete(characterId)
-    }
-  }, [deleteFavorite, showToast])
-
-  /**
-   * Toggle favorite status for a character
-   */
-  const toggleFavorite = useCallback(async (character: Character) => {
-    const characterId = parseInt(character.id)
-    
-    if (operationsInProgress.current.has(characterId)) {
-      return
-    }
-    
-    if (isRateLimited(characterId)) {
-      showToast('Please wait before trying again', 'info')
-      return
-    }
-
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError) {
-        showToast('Authentication error. Please try logging in again.', 'error')
-        console.error('Auth error:', userError)
-        return
-      }
-      
-      if (!user) {
-        showToast('You must be logged in to manage favorites', 'error')
-        return
-      }
-
+  const toggleMutation = useMutation({
+    mutationFn: async ({ character, userId: uid }: ToggleVars) => {
+      const characterId = parseInt(character.id)
       const isFav = favoritesList.some(f => f.character_id === characterId)
+      if (isFav) {
+        const { error } = await supabase
+          .from('favorite_characters')
+          .delete()
+          .eq('user_id', uid)
+          .eq('character_id', characterId)
+        if (error) throw new Error(error.message)
+        return { action: 'removed' as const, character }
+      } else {
+        const { error } = await supabase
+          .from('favorite_characters')
+          .insert({
+            user_id: uid,
+            character_id: characterId,
+            character_name: character.name,
+            character_image: character.image,
+            character_status: character.status,
+            character_species: character.species,
+          })
+        if (error) throw new Error(error.message)
+        return { action: 'added' as const, character }
+      }
+    },
+    onMutate: async ({ character, userId: uid }: ToggleVars) => {
+      const snapshotKey = ['favorites', uid] as const
+      await queryClient.cancelQueries({ queryKey: snapshotKey })
+      const previous = queryClient.getQueryData<FavoritesList>(snapshotKey) ?? []
+      const characterId = parseInt(character.id)
+      const isFav = previous.some(f => f.character_id === characterId)
 
       if (isFav) {
-        await handleRemove(characterId, character.name, user.id)
+        queryClient.setQueryData<FavoritesList>(snapshotKey, prev =>
+          (prev ?? []).filter(f => f.character_id !== characterId),
+        )
       } else {
-        operationsInProgress.current.add(characterId)
-        lastOperationTime.current.set(characterId, Date.now())
-        
-        try {
-          const success = await addFavorite(character, user.id)
-          
-          if (success) {
-            setFavoritesList(prev => [{
-              id: uuidv4(),
-              user_id: user.id,
-              character_id: characterId,
-              character_name: character.name,
-              character_image: character.image,
-              character_status: character.status,
-              character_species: character.species,
-              created_at: new Date().toISOString(),
-            }, ...prev])
-            showToast(`${character.name} added to favorites!`, 'success')
-          } else {
-            showToast('Failed to add to favorites', 'error')
-          }
-        } finally {
-          operationsInProgress.current.delete(characterId)
+        const optimistic: FavoriteCharacter = {
+          id: uuidv4(),
+          user_id: uid,
+          character_id: characterId,
+          character_name: character.name,
+          character_image: character.image,
+          character_status: character.status,
+          character_species: character.species,
+          created_at: new Date().toISOString(),
         }
+        queryClient.setQueryData<FavoritesList>(snapshotKey, prev => [
+          optimistic,
+          ...(prev ?? []),
+        ])
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'An unexpected error occurred'
-      showToast(message, 'error')
-      console.error('toggleFavorite error:', err)
-    }
-  }, [favoritesList, supabase, showToast, addFavorite, handleRemove])
-
-  /**
-   * Remove a character from favorites (explicit remove, not toggle)
-   */
-  const removeFavorite = useCallback(async (character: Character) => {
-    const characterId = parseInt(character.id)
-    
-    if (!favoritesList.some(f => f.character_id === characterId)) {
-      return
-    }
-    
-    if (operationsInProgress.current.has(characterId)) {
-      return
-    }
-    
-    if (isRateLimited(characterId)) {
-      showToast('Please wait before trying again', 'info')
-      return
-    }
-
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError) {
-        showToast('Authentication error. Please try logging in again.', 'error')
-        console.error('Auth error:', userError)
-        return
+      return { previous, snapshotKey }
+    },
+    onError: (err: Error, _vars: ToggleVars, context) => {
+      if (context) {
+        queryClient.setQueryData<FavoritesList>(context.snapshotKey, context.previous)
       }
-      
-      if (!user) {
+      logger.error('toggleFavorite failed', { error: err.message })
+      showToast('Failed to update favorites', 'error')
+    },
+    onSuccess: ({ action, character }: { action: 'added' | 'removed'; character: Character }) => {
+      showToast(
+        action === 'added'
+          ? `${character.name} added to favorites!`
+          : `${character.name} removed from favorites`,
+        action === 'added' ? 'success' : 'info',
+      )
+    },
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: async ({ character, userId: uid }: ToggleVars) => {
+      const characterId = parseInt(character.id)
+      const { error } = await supabase
+        .from('favorite_characters')
+        .delete()
+        .eq('user_id', uid)
+        .eq('character_id', characterId)
+      if (error) throw new Error(error.message)
+      return character
+    },
+    onMutate: async ({ character, userId: uid }: ToggleVars) => {
+      const snapshotKey = ['favorites', uid] as const
+      await queryClient.cancelQueries({ queryKey: snapshotKey })
+      const previous = queryClient.getQueryData<FavoritesList>(snapshotKey) ?? []
+      const characterId = parseInt(character.id)
+      queryClient.setQueryData<FavoritesList>(snapshotKey, prev =>
+        (prev ?? []).filter(f => f.character_id !== characterId),
+      )
+      return { previous, snapshotKey }
+    },
+    onError: (err: Error, _vars: ToggleVars, context) => {
+      if (context) {
+        queryClient.setQueryData<FavoritesList>(context.snapshotKey, context.previous)
+      }
+      logger.error('removeFavorite failed', { error: err.message })
+      showToast('Failed to remove from favorites', 'error')
+    },
+    onSuccess: (character: Character) => {
+      showToast(`${character.name} removed from favorites`, 'info')
+    },
+  })
+
+  const toggleFavorite = useCallback(
+    async (character: Character) => {
+      if (!userId) {
         showToast('You must be logged in to manage favorites', 'error')
         return
       }
+      const characterId = parseInt(character.id)
+      const lastTime = lastOperationTime.current.get(characterId)
+      if (lastTime !== undefined && Date.now() - lastTime < RATE_LIMIT_MS) {
+        showToast('Please wait before trying again', 'info')
+        return
+      }
+      lastOperationTime.current.set(characterId, Date.now())
+      await toggleMutation.mutateAsync({ character, userId })
+    },
+    [toggleMutation, userId, showToast],
+  )
 
-      await handleRemove(characterId, character.name, user.id)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'An unexpected error occurred'
-      showToast(message, 'error')
-      console.error('removeFavorite error:', err)
-    }
-  }, [favoritesList, supabase, showToast, handleRemove])
+  const removeFavorite = useCallback(
+    async (character: Character) => {
+      if (!userId) {
+        showToast('You must be logged in to manage favorites', 'error')
+        return
+      }
+      const characterId = parseInt(character.id)
+      const lastTime = lastOperationTime.current.get(characterId)
+      if (lastTime !== undefined && Date.now() - lastTime < RATE_LIMIT_MS) {
+        showToast('Please wait before trying again', 'info')
+        return
+      }
+      lastOperationTime.current.set(characterId, Date.now())
+      await removeMutation.mutateAsync({ character, userId })
+    },
+    [removeMutation, userId, showToast],
+  )
 
-  /**
-   * Check if a character is in favorites
-   */
-  const isFavorite = useCallback((characterId: number): boolean => {
-    return favoritesList.some(f => f.character_id === characterId)
-  }, [favoritesList])
-
-  useEffect(() => {
-    if (fetchOnMount) {
-      fetchFavorites()
-    }
-  }, [fetchOnMount, fetchFavorites])
+  const isFavorite = useCallback(
+    (characterId: number) => favoritesList.some(f => f.character_id === characterId),
+    [favoritesList],
+  )
 
   return {
     favoritesList,
     loading,
-    error,
+    error: queryError instanceof Error ? queryError.message : null,
     toggleFavorite,
     removeFavorite,
     isFavorite,
-    refetch: fetchFavorites,
+    refetch: () => { void refetch() },
   }
 }
+

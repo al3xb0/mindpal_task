@@ -180,9 +180,9 @@ export default function SignUpPage() {
                 required
                 className={`input-base ${
                   confirmPassword && password !== confirmPassword 
-                    ? '!border-red-500' 
+                    ? 'border-red-500!' 
                     : confirmPassword && password === confirmPassword 
-                    ? '!border-green-500' 
+                    ? 'border-green-500!' 
                     : ''
                 }`}
                 placeholder="••••••••"

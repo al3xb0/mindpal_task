@@ -1,8 +1,6 @@
 export { useDebounce, useDebouncedCallback } from './useDebounce'
 export { useLock } from './useLock'
 export { useFavorites } from './useFavorites'
-export { useUrlPagination } from './useUrlPagination'
 export { useCurrentUser } from './useCurrentUser'
-export { useCharactersQuery } from './useCharactersQuery'
 export { useUrlFilters } from './useUrlFilters'
 export { useInfiniteCharactersQuery } from './useInfiniteCharactersQuery'

@@ -18,7 +18,5 @@ export const queryKeys = {
   characters: {
     all: () => ['characters'] as const,
     infinite: (filters: FilterValues) => ['characters', 'infinite', filters] as const,
-    paginated: (page: number, filters: FilterValues) =>
-      ['characters', 'paginated', page, filters] as const,
   },
 } as const

@@ -84,7 +84,7 @@ cp .env.example .env.local
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your_supabase_publishable_default_key_here
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 ```
 
 ### 4. Run database migrations
@@ -145,7 +145,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | Variable | Description |
 |----------|-------------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` | Your Supabase Publishable default key |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous (anon) key |
 
 ## 📊 Database Schema
 

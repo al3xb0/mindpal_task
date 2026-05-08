@@ -7,7 +7,7 @@ import { useSupabase } from '@/lib/supabase/hooks'
 import { SpinnerIcon, LogoutIcon } from '@/components'
 
 interface NavbarProps {
-  userEmail?: string
+  userEmail?: string | undefined
 }
 
 export function Navbar({ userEmail }: NavbarProps) {

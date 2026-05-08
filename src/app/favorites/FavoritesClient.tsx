@@ -9,7 +9,7 @@ import type { FavoriteCharacter } from '@/types/database'
 import Link from 'next/link'
 
 interface FavoritesClientProps {
-  userEmail?: string
+  userEmail?: string | undefined
 }
 
 export function FavoritesClient({ userEmail }: FavoritesClientProps) {

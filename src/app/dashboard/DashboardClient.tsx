@@ -8,7 +8,7 @@ import type { FilterValues } from '@/components'
 import type { Character } from '@/types/character'
 
 interface DashboardClientProps {
-  userEmail?: string
+  userEmail?: string | undefined
 }
 
 export function DashboardClient({ userEmail }: DashboardClientProps) {

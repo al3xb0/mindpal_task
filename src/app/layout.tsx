@@ -14,9 +14,39 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://rickandmorty-favorites.vercel.app";
+
 export const metadata: Metadata = {
-  title: "Rick & Morty Favorites",
+  metadataBase: new URL(APP_URL),
+  title: {
+    default: "Rick & Morty Favorites",
+    template: "%s | Rick & Morty Favorites",
+  },
   description: "Explore and save your favorite Rick & Morty characters",
+  keywords: ["Rick and Morty", "characters", "favorites", "Rick & Morty"],
+  authors: [{ name: "Rick & Morty Favorites" }],
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: "website",
+    siteName: "Rick & Morty Favorites",
+    title: "Rick & Morty Favorites",
+    description: "Explore and save your favorite Rick & Morty characters",
+    url: APP_URL,
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Rick & Morty Favorites",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Rick & Morty Favorites",
+    description: "Explore and save your favorite Rick & Morty characters",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({

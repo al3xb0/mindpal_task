@@ -7,5 +7,5 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  return <DashboardClient userEmail={user?.email} />
+  return <DashboardClient userEmail={user?.email} userId={user?.id} />
 }

@@ -1,25 +1,53 @@
 ﻿'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useFavorites, useUrlFilters, useInfiniteCharactersQuery } from '@/lib/hooks'
+import { useSupabase } from '@/lib/supabase/hooks'
+import { queryKeys } from '@/lib/queryKeys'
 import {
   Navbar, CharacterCard, CharacterModal, ComparisonModal,
   LoadingGrid, LoadingSpinner, ErrorMessage, CharacterFilters, SadFaceIcon, ChevronDownIcon,
 } from '@/components'
 import type { FilterValues } from '@/components'
 import type { Character } from '@/types/character'
+import type { FavoriteCharacter } from '@/types/database'
 
 interface DashboardClientProps {
   userEmail?: string | undefined
+  userId?: string | undefined
 }
 
 const MAX_COMPARISON = 3
 
-export function DashboardClient({ userEmail }: DashboardClientProps) {
+export function DashboardClient({ userEmail, userId }: DashboardClientProps) {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
   const [comparisonList, setComparisonList] = useState<Character[]>([])
   const [showComparison, setShowComparison] = useState(false)
   const [showScrollTop, setShowScrollTop] = useState(false)
+
+  const queryClient = useQueryClient()
+  const supabase = useSupabase()
+
+  // Eagerly warm the favorites cache using the userId from SSR,
+  // so useFavorites() finds data already there once the auth query resolves.
+  useEffect(() => {
+    if (!userId) return
+    void queryClient.prefetchQuery({
+      queryKey: queryKeys.favorites.byUser(userId),
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('favorite_characters')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+        if (error) throw new Error(error.message)
+        return (data ?? []) as FavoriteCharacter[]
+      },
+      staleTime: 30 * 1000,
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
 
   // Filters synced to URL (clean URLs: empty params removed)
   const { filters: urlFilters, setFilters: syncFiltersToUrl } = useUrlFilters()

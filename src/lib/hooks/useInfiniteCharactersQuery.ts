@@ -4,6 +4,7 @@ import { useInfiniteQuery, type InfiniteData } from '@tanstack/react-query'
 import { useSupabase } from '@/lib/supabase/hooks'
 import { filterSchema } from '@/lib/schemas'
 import { logger } from '@/lib/logger'
+import { queryKeys } from '@/lib/queryKeys'
 import type { FilterValues } from '@/components'
 import type { Character, CharactersInfo } from '@/types/character'
 
@@ -18,7 +19,7 @@ export function useInfiniteCharactersQuery(filters: FilterValues) {
   const supabase = useSupabase()
 
   return useInfiniteQuery<CharactersPage, Error, InfiniteData<CharactersPage>, readonly unknown[], number>({
-    queryKey: ['characters', 'infinite', filters] as const,
+    queryKey: queryKeys.characters.infinite(filters),
     queryFn: async ({ pageParam }) => {
       const parsed = filterSchema.safeParse(filters)
       if (!parsed.success) throw new Error('Invalid filter parameters')

@@ -7,6 +7,7 @@ import { useSupabase } from '@/lib/supabase/hooks'
 import { useToast } from '@/components/Toast'
 import { useCurrentUser } from './useCurrentUser'
 import { logger } from '@/lib/logger'
+import { queryKeys } from '@/lib/queryKeys'
 import type { Character } from '@/types/character'
 import type { FavoriteCharacter } from '@/types/database'
 
@@ -27,7 +28,7 @@ export function useFavorites() {
   const lastOperationTime = useRef<Map<number, number>>(new Map())
 
   const userId = user?.id
-  const queryKey = ['favorites', userId] as const
+  const queryKey = queryKeys.favorites.byUser(userId)
 
   const {
     data: favoritesList = [],
@@ -81,7 +82,7 @@ export function useFavorites() {
       }
     },
     onMutate: async ({ character, userId: uid }: ToggleVars) => {
-      const snapshotKey = ['favorites', uid] as const
+      const snapshotKey = queryKeys.favorites.byUser(uid)
       await queryClient.cancelQueries({ queryKey: snapshotKey })
       const previous = queryClient.getQueryData<FavoritesList>(snapshotKey) ?? []
       const characterId = parseInt(character.id)
@@ -126,39 +127,6 @@ export function useFavorites() {
     },
   })
 
-  const removeMutation = useMutation({
-    mutationFn: async ({ character, userId: uid }: ToggleVars) => {
-      const characterId = parseInt(character.id)
-      const { error } = await supabase
-        .from('favorite_characters')
-        .delete()
-        .eq('user_id', uid)
-        .eq('character_id', characterId)
-      if (error) throw new Error(error.message)
-      return character
-    },
-    onMutate: async ({ character, userId: uid }: ToggleVars) => {
-      const snapshotKey = ['favorites', uid] as const
-      await queryClient.cancelQueries({ queryKey: snapshotKey })
-      const previous = queryClient.getQueryData<FavoritesList>(snapshotKey) ?? []
-      const characterId = parseInt(character.id)
-      queryClient.setQueryData<FavoritesList>(snapshotKey, prev =>
-        (prev ?? []).filter(f => f.character_id !== characterId),
-      )
-      return { previous, snapshotKey }
-    },
-    onError: (err: Error, _vars: ToggleVars, context) => {
-      if (context) {
-        queryClient.setQueryData<FavoritesList>(context.snapshotKey, context.previous)
-      }
-      logger.error('removeFavorite failed', { error: err.message })
-      showToast('Failed to remove from favorites', 'error')
-    },
-    onSuccess: (character: Character) => {
-      showToast(`${character.name} removed from favorites`, 'info')
-    },
-  })
-
   const toggleFavorite = useCallback(
     async (character: Character) => {
       if (!userId) {
@@ -176,23 +144,10 @@ export function useFavorites() {
     },
     [toggleMutation, userId, showToast],
   )
-
+  
   const removeFavorite = useCallback(
-    async (character: Character) => {
-      if (!userId) {
-        showToast('You must be logged in to manage favorites', 'error')
-        return
-      }
-      const characterId = parseInt(character.id)
-      const lastTime = lastOperationTime.current.get(characterId)
-      if (lastTime !== undefined && Date.now() - lastTime < RATE_LIMIT_MS) {
-        showToast('Please wait before trying again', 'info')
-        return
-      }
-      lastOperationTime.current.set(characterId, Date.now())
-      await removeMutation.mutateAsync({ character, userId })
-    },
-    [removeMutation, userId, showToast],
+    (character: Character) => toggleFavorite(character),
+    [toggleFavorite],
   )
 
   const isFavorite = useCallback(

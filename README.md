@@ -37,13 +37,16 @@ A Next.js application that allows users to explore Rick and Morty characters and
 │   │   └── icons/                # Reusable SVG icon components
 │   ├── lib/                      # Utilities & Supabase clients
 │   │   ├── constants.ts          # Centralized constants
+│   │   ├── imageLoadQueue.ts     # Token-bucket rate limiter for CDN avatar requests
+│   │   ├── queryKeys.ts          # Centralized TanStack Query keys
 │   │   ├── hooks/                # Custom React hooks
 │   │   │   ├── useDebounce.ts    # Debounce hook for values/callbacks
 │   │   │   ├── useFavorites.ts   # Favorites with TanStack Query optimistic updates
 │   │   │   ├── useUrlFilters.ts  # URL-synced filter state (clean URLs)
 │   │   │   ├── useInfiniteCharactersQuery.ts # Infinite scroll query hook
 │   │   │   ├── useCurrentUser.ts # Auth user hook
-│   │   │   └── useLock.ts        # Lock mechanism for async operations
+│   │   │   ├── useLock.ts        # Lock mechanism for async operations
+│   │   │   └── useThrottledImage.ts # Viewport-gated, rate-limited avatar loading
 │   │   ├── providers.tsx         # QueryClientProvider wrapper
 │   │   ├── schemas.ts            # Zod validation schemas
 │   │   ├── logger.ts             # Structured logger
@@ -70,7 +73,6 @@ A Next.js application that allows users to explore Rick and Morty characters and
 │
 ├── vitest.config.ts              # Vitest configuration
 └── playwright.config.ts          # Playwright configuration
-```
 ```
 
 ## 🛠️ Setup Instructions
@@ -255,6 +257,8 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
 
 12. **Accessibility**: Modal components include focus trap, ARIA attributes, and keyboard navigation support.
 
+13. **Throttled Avatar Loading**: The Rick & Morty image CDN rate-limits by request rate per IP — a fast scroll easily fires 30+ req/s and trips HTTP 429. Avatars are served straight from the CDN (`next/image` with `unoptimized`, no optimizer proxy) and gated through a client-side token-bucket rate limiter (~5 req/s, small burst) combined with an `IntersectionObserver` so only near-viewport images are requested. Failed loads retry with backoff before falling back to a placeholder.
+
 ## 📝 Features
 
 ### Core Features
@@ -305,7 +309,7 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
 ![404](docs/screenshots/404.png)
 
 ### Dashboard
-Characters grid with filters, pagination, and clickable cards.
+Characters grid with filters, infinite scroll, and clickable cards.
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ### Character Modal

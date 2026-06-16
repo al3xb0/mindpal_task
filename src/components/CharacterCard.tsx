@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { useState } from 'react'
 import { STATUS_COLORS } from '@/lib/constants'
+import { useThrottledImage } from '@/lib/hooks'
 import { HeartIcon, HeartOutlineIcon } from '@/components'
 import type { Character } from '@/types/character'
 
@@ -13,6 +14,7 @@ interface CharacterCardProps {
   onCardClick?: ((character: Character) => void) | undefined
   isSelectedForComparison?: boolean | undefined
   onToggleComparison?: ((character: Character) => void) | undefined
+  priority?: boolean | undefined
 }
 
 export function CharacterCard({
@@ -22,8 +24,13 @@ export function CharacterCard({
   onCardClick,
   isSelectedForComparison,
   onToggleComparison,
+  priority,
 }: CharacterCardProps) {
   const [loading, setLoading] = useState(false)
+  const { ref: imgRef, src: imgSrc, onLoad, onError } = useThrottledImage<HTMLDivElement>(
+    character.image,
+    priority,
+  )
 
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -52,15 +59,21 @@ export function CharacterCard({
       className={`card-hover ${onCardClick ? 'cursor-pointer' : ''} ${isSelectedForComparison ? 'ring-2 ring-blue-500' : ''}`}
       onClick={handleCardClick}
     >
-      <div className="relative">
-        <Image
-          src={character.image}
-          alt={character.name}
-          width={300}
-          height={300}
-          className="w-full h-48 object-cover"
-          loading="lazy"
-        />
+      <div className="relative" ref={imgRef}>
+        {imgSrc ? (
+          <Image
+            src={imgSrc}
+            alt={character.name}
+            width={300}
+            height={300}
+            className="w-full h-48 object-cover"
+            onLoad={onLoad}
+            onError={onError}
+            {...(priority ? { priority: true } : { loading: 'eager' as const })}
+          />
+        ) : (
+          <div className="w-full h-48 bg-gray-700 animate-pulse" aria-hidden="true" />
+        )}
         {/* Favorites button */}
         <button
           onClick={handleToggle}

@@ -142,13 +142,14 @@ export function DashboardClient({ userEmail, userId }: DashboardClientProps) {
             </p>
             <p className="text-gray-500 text-xs mb-4">Click on a card to see more details</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {characters.map((character) => (
+              {characters.map((character, index) => (
                 <CharacterCard
                   key={character.id}
                   character={character}
                   isFavorite={isFavorite(parseInt(character.id))}
                   onToggleFavorite={toggleFavorite}
                   onCardClick={setSelectedCharacter}
+                  priority={index < 4}
                   isSelectedForComparison={comparisonList.some((c) => c.id === character.id)}
                   onToggleComparison={
                     comparisonList.length < MAX_COMPARISON ||

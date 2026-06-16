@@ -8,10 +8,11 @@ const nextConfig: NextConfig = {
         hostname: 'rickandmortyapi.com',
       },
     ],
-    // Cache optimised images on the server for 24 h.
-    // Each unique avatar is fetched from rickandmortyapi.com only once per day;
-    // subsequent requests are served from disk cache → no 429s.
-    minimumCacheTTL: 86400,
+    // Avatars are already small, CDN-served 300x300 jpegs, so server-side
+    // optimisation adds no value. Proxying every one through /_next/image
+    // floods the upstream API and triggers 429s on scroll. Serve them
+    // directly from the CDN instead.
+    unoptimized: true,
   },
 };
 

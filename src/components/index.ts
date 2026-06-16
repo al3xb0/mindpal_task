@@ -1,4 +1,5 @@
 export { Navbar } from './Navbar'
+export { Footer } from './Footer'
 export { CharacterCard } from './CharacterCard'
 export { CharacterModal } from './CharacterModal'
 export { LoadingSpinner, LoadingCard, LoadingGrid } from './Loading'

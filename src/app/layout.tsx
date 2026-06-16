@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/Toast";
-import { ErrorBoundary } from "@/components";
+import { ErrorBoundary, Footer } from "@/components";
 import { Providers } from "@/lib/providers";
 import "./globals.css";
 
@@ -33,20 +33,11 @@ export const metadata: Metadata = {
     title: "Rick & Morty Favorites",
     description: "Explore and save your favorite Rick & Morty characters",
     url: APP_URL,
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "Rick & Morty Favorites",
-      },
-    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Rick & Morty Favorites",
     description: "Explore and save your favorite Rick & Morty characters",
-    images: ["/og-image.png"],
   },
 };
 
@@ -64,6 +55,7 @@ export default function RootLayout({
           <Providers>
             <ToastProvider>
               {children}
+              <Footer />
             </ToastProvider>
           </Providers>
         </ErrorBoundary>

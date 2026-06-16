@@ -96,12 +96,12 @@ export const ComparisonModal = memo(function ComparisonModal({
         </div>
 
         {/* Comparison grid */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {/* Character names row */}
-          <div className={`grid ${gridCols} gap-4 mb-6`}>
+          <div className={`grid ${gridCols} gap-2 sm:gap-4 mb-6`}>
             {characters.map((c) => (
               <div key={c.id} className="text-center">
-                <h3 className="text-lg font-semibold text-white truncate">{c.name}</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-white truncate">{c.name}</h3>
                 <button
                   onClick={() => void onToggleFavorite(c)}
                   className="mt-2 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
@@ -118,7 +118,7 @@ export const ComparisonModal = memo(function ComparisonModal({
           </div>
 
           {/* Images */}
-          <div className={`grid ${gridCols} gap-4 mb-6`}>
+          <div className={`grid ${gridCols} gap-2 sm:gap-4 mb-6`}>
             {characters.map((c) => (
               <div key={c.id} className="rounded-xl overflow-hidden">
                 <Image
@@ -126,7 +126,7 @@ export const ComparisonModal = memo(function ComparisonModal({
                   alt={c.name}
                   width={300}
                   height={300}
-                  className="w-full h-40 object-cover"
+                  className="w-full h-28 sm:h-40 object-cover"
                 />
               </div>
             ))}
@@ -136,14 +136,14 @@ export const ComparisonModal = memo(function ComparisonModal({
           {ROW_LABELS.filter((r) => r.key !== 'image').map((row) => (
             <div key={row.key} className="mb-2">
               <p className="text-gray-500 text-xs uppercase tracking-wider mb-1">{row.label}</p>
-              <div className={`grid ${gridCols} gap-4`}>
+              <div className={`grid ${gridCols} gap-2 sm:gap-4`}>
                 {characters.map((c) => {
                   const value = getFieldValue(c, row.key)
                   const statusColor = row.key === 'status' ? (STATUS_COLORS[c.status] ?? STATUS_COLORS['unknown']) : null
                   return (
                     <div
                       key={c.id}
-                      className="bg-gray-800 rounded-lg px-4 py-3 text-sm text-white flex items-center gap-2"
+                      className="bg-gray-800 rounded-lg px-2 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm text-white flex items-center gap-2 wrap-break-word"
                     >
                       {statusColor && <span className={`status-dot ${statusColor} shrink-0`} />}
                       {value}

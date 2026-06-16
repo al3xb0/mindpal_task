@@ -29,9 +29,9 @@ A Next.js application that allows users to explore Rick and Morty characters and
 │   │   ├── CharacterFilters.tsx  # Search/filter controls (debounced, URL-synced)
 │   │   ├── ComparisonModal.tsx   # Side-by-side character comparison (2–3 chars)
 │   │   ├── ErrorBoundary.tsx     # Global error boundary
+│   │   ├── Footer.tsx            # Global footer with author credit
 │   │   ├── Loading.tsx           # Skeleton loaders
 │   │   ├── Navbar.tsx            # Navigation with active links
-│   │   ├── Pagination.tsx        # Page navigation (legacy)
 │   │   ├── PasswordStrength.tsx  # Password requirements indicator
 │   │   ├── Toast.tsx             # Toast notification system
 │   │   └── icons/                # Reusable SVG icon components
@@ -42,10 +42,8 @@ A Next.js application that allows users to explore Rick and Morty characters and
 │   │   │   ├── useFavorites.ts   # Favorites with TanStack Query optimistic updates
 │   │   │   ├── useUrlFilters.ts  # URL-synced filter state (clean URLs)
 │   │   │   ├── useInfiniteCharactersQuery.ts # Infinite scroll query hook
-│   │   │   ├── useCharactersQuery.ts  # Paginated query (legacy)
 │   │   │   ├── useCurrentUser.ts # Auth user hook
-│   │   │   ├── useLock.ts        # Lock mechanism for async operations
-│   │   │   └── useUrlPagination.ts # URL-synced pagination (legacy)
+│   │   │   └── useLock.ts        # Lock mechanism for async operations
 │   │   ├── providers.tsx         # QueryClientProvider wrapper
 │   │   ├── schemas.ts            # Zod validation schemas
 │   │   ├── logger.ts             # Structured logger
@@ -339,7 +337,7 @@ npm run lint
 ```
 
 **Test coverage includes:**
-- Hook unit tests: `useDebounce`, `useUrlPagination`, `useFavorites`
+- Hook unit tests: `useDebounce`, `useFavorites`
 - Component tests: `CharacterCard`, `CharacterFilters`, `CharacterModal`
 - E2E auth flow: login, signup, redirect protection
 - E2E favorites flow: add/remove favorites, search, filter, export

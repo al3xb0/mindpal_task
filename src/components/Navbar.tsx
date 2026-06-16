@@ -44,8 +44,8 @@ export function Navbar({ userEmail }: NavbarProps) {
     <nav className="bg-gray-800 border-b border-gray-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-8">
-            <Link href="/dashboard" className="text-xl font-bold text-green-400">
+          <div className="flex items-center gap-3 sm:gap-8">
+            <Link href="/dashboard" className="text-lg sm:text-xl font-bold text-green-400 whitespace-nowrap">
               Rick & Morty
             </Link>
             <div className="flex gap-1">
@@ -69,24 +69,24 @@ export function Navbar({ userEmail }: NavbarProps) {
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {userEmail && (
-              <span className="text-gray-400 text-sm hidden sm:inline">{userEmail}</span>
+              <span className="text-gray-400 text-sm hidden md:inline">{userEmail}</span>
             )}
             <button
               onClick={handleLogout}
               disabled={isLoggingOut}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
             >
               {isLoggingOut ? (
                 <>
                   <SpinnerIcon className="h-4 w-4 animate-spin" />
-                  <span>Logging out...</span>
+                  <span className="hidden sm:inline">Logging out...</span>
                 </>
               ) : (
                 <>
                   <LogoutIcon className="h-4 w-4" />
-                  <span>Logout</span>
+                  <span className="hidden sm:inline">Logout</span>
                 </>
               )}
             </button>

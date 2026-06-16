@@ -12,6 +12,7 @@ const corsHeaders = {
 interface CacheEntry { data: unknown; expiresAt: number }
 const responseCache = new Map<string, CacheEntry>()
 const CACHE_TTL_MS = 5 * 60 * 1000
+const MAX_CACHE_ENTRIES = 500
 
 function getCacheKey(page: number, filter: FilterCharacter | null): string {
   return `${String(page)}-${JSON.stringify(filter ?? {})}`
@@ -23,6 +24,11 @@ function getCached(key: string): unknown | undefined {
   return entry.data
 }
 function setCache(key: string, data: unknown): void {
+  // Bound memory: drop the oldest entry once the cache is full.
+  if (responseCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = responseCache.keys().next().value
+    if (oldestKey !== undefined) responseCache.delete(oldestKey)
+  }
   responseCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS })
 }
 // ─────────────────────────────────────────────────────────────────────────────

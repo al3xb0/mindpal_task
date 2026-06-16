@@ -64,6 +64,12 @@ function exportToJson(favs: FavoriteCharacter[]): void {
   )
 }
 
+// Quote a CSV field and neutralise spreadsheet formula injection (=, +, -, @).
+function escapeCsvValue(value: string): string {
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+  return `"${safe.replace(/"/g, '""')}"`
+}
+
 function exportToCsv(favs: FavoriteCharacter[]): void {
   const headers = ['ID', 'Name', 'Status', 'Species', 'Image URL', 'Saved At']
   const rows = favs.map((f) => [
@@ -75,7 +81,7 @@ function exportToCsv(favs: FavoriteCharacter[]): void {
     f.created_at,
   ])
   const csv = [headers, ...rows]
-    .map((row) => row.map((v) => `"${v.replace(/"/g, '""')}"`).join(','))
+    .map((row) => row.map(escapeCsvValue).join(','))
     .join('\n')
   downloadFile(
     csv,

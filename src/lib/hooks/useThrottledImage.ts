@@ -1,62 +1,66 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { acquireImageSlot, type ImageSlot } from '@/lib/imageLoadQueue'
-
-const FALLBACK_IMAGE = '/placeholder.svg'
-const MAX_RETRIES = 2
+import { loadImage, type ImageLoadHandle } from '@/lib/imageLoadQueue'
 
 interface ThrottledImage<T extends HTMLElement> {
   /** Attach to the element whose viewport proximity triggers the load. */
   ref: React.RefObject<T | null>
-  /** Source to render; null until the image is near the viewport and a slot is free. */
+  /** Source to render; null until the bytes are cached, then set once. */
   src: string | null
   onLoad: () => void
   onError: () => void
 }
 
 /**
- * Lazily loads an image only when it nears the viewport, gated behind a global
- * rate limiter so request bursts stay under the CDN rate limit. Eager images
- * load immediately (bypassing the queue) for LCP. Failed loads retry with
- * backoff, then fall back to a placeholder.
+ * Lazily loads an image while it is near the viewport, gated behind a global
+ * concurrency limiter so a page's avatars load together (in waves) without
+ * tripping the CDN burst limit. The real bytes are prefetched off-DOM; the
+ * visible <img> is only handed an already-cached URL, so it paints instantly and
+ * never flickers, and 429 retries happen invisibly in the limiter. A card
+ * scrolled away before it loads releases its slot to the cards still on screen.
  */
 export function useThrottledImage<T extends HTMLElement = HTMLDivElement>(
   realSrc: string,
   eager = false,
 ): ThrottledImage<T> {
-  const [src, setSrc] = useState<string | null>(eager ? realSrc : null)
+  const [src, setSrc] = useState<string | null>(null)
   const ref = useRef<T | null>(null)
-  const slotRef = useRef<ImageSlot | null>(null)
-  const stateRef = useRef({ retries: 0, cancelled: false, started: false })
+  const handleRef = useRef<ImageLoadHandle | null>(null)
+  const st = useRef({ cancelled: false, loaded: false })
+  const beginRef = useRef<() => void>(() => {})
 
   useEffect(() => {
-    const st = stateRef.current
-    st.cancelled = false
+    const s = st.current
+    s.cancelled = false
 
-    if (eager) {
-      return () => {
-        st.cancelled = true
-        slotRef.current?.release()
-      }
-    }
-
-    const start = () => {
-      if (st.started) return
-      st.started = true
-      const slot = acquireImageSlot()
-      slotRef.current = slot
-      void slot.promise.then(() => {
-        if (!st.cancelled) setSrc(realSrc)
+    const begin = () => {
+      if (s.cancelled || s.loaded || handleRef.current) return
+      const handle = loadImage(realSrc, eager)
+      handleRef.current = handle
+      void handle.promise.then(() => {
+        handleRef.current = null
+        if (s.cancelled) return
+        s.loaded = true
+        setSrc(realSrc) // already cached → instant paint, no flicker
       })
     }
+    beginRef.current = begin
 
-    // jsdom / older environments: skip viewport gating, load straight away.
-    if (typeof IntersectionObserver === 'undefined') {
-      start()
+    // Drop a card that is still loading (nothing painted yet) so a fast scroll
+    // stops spending the budget on avatars it flew past.
+    const stop = () => {
+      if (s.loaded) return
+      handleRef.current?.cancel()
+      handleRef.current = null
+    }
+
+    if (eager || typeof IntersectionObserver === 'undefined') {
+      begin()
       return () => {
-        st.cancelled = true
-        slotRef.current?.release()
+        s.cancelled = true
+        handleRef.current?.cancel()
+        handleRef.current = null
       }
     }
 
@@ -65,51 +69,33 @@ export function useThrottledImage<T extends HTMLElement = HTMLDivElement>(
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
-          observer.disconnect()
-          start()
-        }
+        const visible = entries[0]?.isIntersecting ?? false
+        if (s.loaded) return
+        if (visible) begin()
+        else stop()
       },
-      { rootMargin: '300px' },
+      { rootMargin: '400px' },
     )
     observer.observe(el)
 
     return () => {
-      st.cancelled = true
-      st.started = false
+      s.cancelled = true
       observer.disconnect()
-      slotRef.current?.release()
+      handleRef.current?.cancel()
+      handleRef.current = null
     }
   }, [realSrc, eager])
 
-  const onLoad = () => {
-    slotRef.current?.release()
-  }
+  const onLoad = () => {}
 
+  // The src is set from cache, so this fires only if that cache entry was evicted
+  // before the <img> painted. Re-run the preload to self-heal (rare).
   const onError = () => {
-    const st = stateRef.current
-    slotRef.current?.release()
-
-    if (st.retries >= MAX_RETRIES) {
-      setSrc(FALLBACK_IMAGE)
-      return
-    }
-    st.retries += 1
-    // Unmount the <img> so the next mount re-fetches (using the browser cache if
-    // a good copy landed); the retry itself goes back through the rate limiter.
+    const s = st.current
+    if (s.cancelled) return
+    s.loaded = false
     setSrc(null)
-    window.setTimeout(() => {
-      if (st.cancelled) return
-      const slot = acquireImageSlot()
-      slotRef.current = slot
-      void slot.promise.then(() => {
-        if (st.cancelled) {
-          slot.release()
-          return
-        }
-        setSrc(realSrc)
-      })
-    }, 600 * st.retries)
+    beginRef.current()
   }
 
   return { ref, src, onLoad, onError }

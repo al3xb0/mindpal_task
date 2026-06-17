@@ -5,7 +5,7 @@ A Next.js application that allows users to explore Rick and Morty characters and
 ## 🚀 Tech Stack
 
 - **Frontend**: Next.js 16.1+ (App Router), React 19, TypeScript, Tailwind CSS 4
-- **State Management**: TanStack Query v5 (server state, optimistic updates, infinite scroll)
+- **State Management**: TanStack Query v5 (server state, optimistic updates, `useInfiniteQuery` with Load More)
 - **Virtualization**: TanStack Virtual v3 (windowed grid for large favorites lists)
 - **Validation**: Zod v4 (runtime schema validation)
 - **Backend**: Supabase (PostgreSQL + Auth)
@@ -18,7 +18,7 @@ A Next.js application that allows users to explore Rick and Morty characters and
 ```
 ├── src/                          # Frontend (Next.js)
 │   ├── app/                      # App Router pages
-│   │   ├── dashboard/            # Characters list with infinite scroll
+│   │   ├── dashboard/            # Characters list with Load More pagination
 │   │   ├── favorites/            # User favorites with export
 │   │   ├── login/                # Login page
 │   │   ├── signup/               # Sign up page
@@ -37,16 +37,16 @@ A Next.js application that allows users to explore Rick and Morty characters and
 │   │   └── icons/                # Reusable SVG icon components
 │   ├── lib/                      # Utilities & Supabase clients
 │   │   ├── constants.ts          # Centralized constants
-│   │   ├── imageLoadQueue.ts     # Token-bucket rate limiter for CDN avatar requests
+│   │   ├── imageLoadQueue.ts     # Concurrency-limited off-DOM preloader for CDN avatars
 │   │   ├── queryKeys.ts          # Centralized TanStack Query keys
 │   │   ├── hooks/                # Custom React hooks
 │   │   │   ├── useDebounce.ts    # Debounce hook for values/callbacks
 │   │   │   ├── useFavorites.ts   # Favorites with TanStack Query optimistic updates
 │   │   │   ├── useUrlFilters.ts  # URL-synced filter state (clean URLs)
-│   │   │   ├── useInfiniteCharactersQuery.ts # Infinite scroll query hook
+│   │   │   ├── useInfiniteCharactersQuery.ts # Paginated characters query (Load More)
 │   │   │   ├── useCurrentUser.ts # Auth user hook
 │   │   │   ├── useLock.ts        # Lock mechanism for async operations
-│   │   │   └── useThrottledImage.ts # Viewport-gated, rate-limited avatar loading
+│   │   │   └── useThrottledImage.ts # Viewport-gated, concurrency-limited avatar loading
 │   │   ├── providers.tsx         # QueryClientProvider wrapper
 │   │   ├── schemas.ts            # Zod validation schemas
 │   │   ├── logger.ts             # Structured logger
@@ -237,7 +237,7 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
 
 2. **TanStack Query v5**: Server state managed with `useQuery`, `useMutation`, and `useInfiniteQuery`. Provides automatic cache invalidation, background refetching, and optimistic updates for favorites.
 
-3. **Infinite Scroll**: Dashboard uses `useInfiniteCharactersQuery` (TanStack Query `useInfiniteQuery`) with an `IntersectionObserver` sentinel element at the bottom of the grid to auto-load the next page.
+3. **Load More Pagination**: Dashboard uses `useInfiniteCharactersQuery` (TanStack Query `useInfiniteQuery`) and appends the next page of 20 characters on an explicit **Load More** button click. Loading in user-driven batches keeps avatar requests well under the CDN's burst limit (vs. auto-fetch-on-scroll, which fired dozens of concurrent requests and tripped HTTP 429).
 
 4. **URL-Synced Filters**: `useUrlFilters` keeps filter state in URL search params. Empty params are removed to keep URLs clean. This enables deep linking and back-button support.
 
@@ -257,21 +257,21 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
 
 12. **Accessibility**: Modal components include focus trap, ARIA attributes, and keyboard navigation support.
 
-13. **Throttled Avatar Loading**: The Rick & Morty image CDN rate-limits by request rate per IP — a fast scroll easily fires 30+ req/s and trips HTTP 429. Avatars are served straight from the CDN (`next/image` with `unoptimized`, no optimizer proxy) and gated through a client-side token-bucket rate limiter (~5 req/s, small burst) combined with an `IntersectionObserver` so only near-viewport images are requested. Failed loads retry with backoff before falling back to a placeholder.
+13. **Throttled Avatar Loading**: The Rick & Morty image CDN rate-limits by burst (~10 concurrent requests load cleanly, 20+ trip HTTP 429, and it stays banned while hammered). Avatars are served straight from the CDN (`next/image` with `unoptimized`, no optimizer proxy) and gated through `useThrottledImage` (`IntersectionObserver`, so only near-viewport images are requested) on top of `imageLoadQueue` — an off-DOM `new Image()` preloader with a concurrency cap of 6 that hands the visible `<img>` an already-cached URL (instant paint, no flicker). On a 429 a global circuit breaker pauses all fetching for a growing cooldown instead of retrying per-image, so the CDN ban window can clear.
 
 ## 📝 Features
 
 ### Core Features
 - ✅ User authentication (Sign up / Login)
 - ✅ Protected routes with middleware
-- ✅ Character listing with **infinite scroll** (auto-loads next page)
+- ✅ Character listing with **Load More pagination** (loads next page on click)
 - ✅ Add/Remove favorites (optimistic updates via TanStack Query)
 - ✅ Favorites page with virtual grid (>50 items)
 - ✅ Row Level Security (users own data only)
 - ✅ Edge Function for GraphQL proxy with validation + **in-memory caching**
 
 ### New Features
-- ✅ **Infinite Scroll** — no pagination buttons; characters load as you scroll
+- ✅ **Load More** — characters load in batches of 20 on an explicit button click
 - ✅ **URL-synced Filters** — name/status/species reflected in URL; empty params removed (clean URLs)
 - ✅ **Character Comparison** — select 2–3 characters for side-by-side comparison modal
 - ✅ **Export Favorites** — download your favorites list as JSON or CSV
@@ -309,7 +309,7 @@ The `get-characters` Edge Function acts as a proxy to the Rick & Morty GraphQL A
 ![404](docs/screenshots/404.png)
 
 ### Dashboard
-Characters grid with filters, infinite scroll, and clickable cards.
+Characters grid with filters, Load More pagination, and clickable cards.
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ### Character Modal

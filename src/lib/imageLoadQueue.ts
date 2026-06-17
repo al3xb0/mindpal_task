@@ -1,81 +1,125 @@
-// The Rick and Morty CDN rate-limits by REQUEST RATE per IP, not by the number
-// of concurrent connections: a burst trips 429 (a fast scroll easily fires
-// 30+/s), while a steady ~5 req/s loads every avatar fine. So we pace image
-// loads with a token bucket (5 tokens/s, small burst) and keep a concurrency
-// cap purely as a safety net.
 const MAX_CONCURRENT = 6
-const REFILL_PER_SEC = 5
-const BURST = 10
-const REFILL_MS = 1000 / REFILL_PER_SEC
+const BASE_COOLDOWN_MS = 1500
+const MAX_COOLDOWN_MS = 8000
+// Safety net: if a preload fires neither load nor error it would pin a slot
+// forever and eventually starve the queue. Auto-release it.
+const MAX_HOLD_MS = 15000
+
+interface Task {
+  src: string
+  eager: boolean
+  cancelled: boolean
+  resolve: () => void
+  /** Aborts the in-flight off-DOM load (set while running, cleared when done). */
+  abort: (() => void) | null
+}
 
 let active = 0
-let tokens = BURST
-let lastRefill = Date.now()
-let timer: ReturnType<typeof setTimeout> | null = null
+const queue: Task[] = []
+let pausedUntil = 0
+let cooldownMs = BASE_COOLDOWN_MS
+// Live concurrency ceiling: drops to 1 after a 429 and ramps back to MAX_CONCURRENT
+// as loads succeed, so we tiptoe out of the ban instead of re-tripping it.
+let limit = MAX_CONCURRENT
+let resumeTimer: ReturnType<typeof setTimeout> | null = null
 
-interface Waiter {
-  grant: () => void
-}
-const waiters: Waiter[] = []
-
-function refill(): void {
-  const elapsed = Date.now() - lastRefill
-  if (elapsed >= REFILL_MS) {
-    const add = Math.floor(elapsed / REFILL_MS)
-    tokens = Math.min(BURST, tokens + add)
-    lastRefill += add * REFILL_MS
-  }
+function scheduleResume(): void {
+  if (resumeTimer) return
+  resumeTimer = setTimeout(() => {
+    resumeTimer = null
+    pump()
+  }, Math.max(0, pausedUntil - Date.now()))
 }
 
 function pump(): void {
-  refill()
-  while (waiters.length > 0 && active < MAX_CONCURRENT && tokens > 0) {
-    tokens -= 1
-    active += 1
-    waiters.shift()?.grant()
+  if (Date.now() < pausedUntil) {
+    scheduleResume()
+    return
   }
-  if (timer === null && waiters.length > 0) {
-    timer = setTimeout(() => {
-      timer = null
-      pump()
-    }, REFILL_MS)
+  while (active < limit && queue.length > 0) {
+    const next = queue.shift()
+    if (next) start(next)
   }
 }
 
-export interface ImageSlot {
-  /** Resolves once a rate-limit token and a concurrency slot are granted. */
-  promise: Promise<void>
-  /** Releases the slot (or cancels the request if still queued). Idempotent. */
-  release: () => void
+// Open the breaker: pause every fetch for the current cooldown. A whole wave of
+// simultaneous 429s shares one pause window (and grows the cooldown only once).
+function trip(): void {
+  const now = Date.now()
+  limit = 1 // choke to single-file until a load proves the ban has cleared
+  if (now < pausedUntil) return
+  pausedUntil = now + cooldownMs
+  cooldownMs = Math.min(MAX_COOLDOWN_MS, cooldownMs * 2)
 }
 
-export function acquireImageSlot(): ImageSlot {
-  let granted = false
-  let released = false
+function enqueue(task: Task): void {
+  // Eager (LCP) images jump the queue so they paint first.
+  if (task.eager) queue.unshift(task)
+  else queue.push(task)
+  pump()
+}
 
-  let grant!: () => void
-  const promise = new Promise<void>((resolve) => {
-    grant = () => {
-      granted = true
-      resolve()
+function start(task: Task): void {
+  active += 1
+  const img = new Image()
+  let watchdog: ReturnType<typeof setTimeout> | null = null
+  let settled = false
+
+  const finish = (ok: boolean) => {
+    if (settled) return
+    settled = true
+    img.onload = null
+    img.onerror = null
+    img.src = '' // detach/abort the off-DOM download so the slot is truly free
+    task.abort = null
+    if (watchdog) {
+      clearTimeout(watchdog)
+      watchdog = null
     }
+    active = Math.max(0, active - 1)
+    if (ok) {
+      cooldownMs = BASE_COOLDOWN_MS // ban cleared, reset the backoff
+      limit = Math.min(MAX_CONCURRENT, limit + 1) // ramp concurrency back up
+      task.resolve()
+    } else if (!task.cancelled) {
+      trip()
+      if (task.eager) queue.unshift(task)
+      else queue.push(task)
+    }
+    pump()
+  }
+
+  task.abort = () => finish(false)
+  watchdog = setTimeout(() => finish(false), MAX_HOLD_MS)
+  img.onload = () => finish(true)
+  img.onerror = () => finish(false)
+  img.src = task.src
+}
+
+export interface ImageLoadHandle {
+  /** Resolves once the image bytes are cached (the <img> can paint instantly). */
+  promise: Promise<void>
+  /** Cancels the load if still pending/in-flight. Idempotent. */
+  cancel: () => void
+}
+
+export function loadImage(src: string, eager = false): ImageLoadHandle {
+  let resolve!: () => void
+  const promise = new Promise<void>((res) => {
+    resolve = res
   })
 
-  const waiter: Waiter = { grant }
-  waiters.push(waiter)
-  pump()
+  const task: Task = { src, eager, cancelled: false, resolve, abort: null }
+  enqueue(task)
 
-  const release = (): void => {
-    if (released) return
-    released = true
-    if (granted) {
-      active = Math.max(0, active - 1)
-      pump()
-    } else {
-      const idx = waiters.indexOf(waiter)
-      if (idx !== -1) waiters.splice(idx, 1)
-    }
+  return {
+    promise,
+    cancel: () => {
+      if (task.cancelled) return
+      task.cancelled = true
+      const idx = queue.indexOf(task)
+      if (idx !== -1) queue.splice(idx, 1) // still queued: just drop it
+      else task.abort?.() // in-flight: abort the download and free the slot
+    },
   }
-
-  return { promise, release }
 }

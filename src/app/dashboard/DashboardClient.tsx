@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useFavorites, useUrlFilters, useInfiniteCharactersQuery } from '@/lib/hooks'
 import { useSupabase } from '@/lib/supabase/hooks'
@@ -64,7 +64,6 @@ export function DashboardClient({ userEmail, userId }: DashboardClientProps) {
   } = useInfiniteCharactersQuery(urlFilters)
 
   const characters = data?.pages.flatMap((p) => p.characters.results) ?? []
-  const sentinelRef = useRef<HTMLDivElement>(null)
 
   // Show scroll-to-top button after scrolling 500px
   useEffect(() => {
@@ -72,21 +71,6 @@ export function DashboardClient({ userEmail, userId }: DashboardClientProps) {
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
-
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
-          void fetchNextPage()
-        }
-      },
-      { rootMargin: '300px' },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const handleFilterChange = useCallback(
     (newFilters: FilterValues) => {
@@ -161,16 +145,17 @@ export function DashboardClient({ userEmail, userId }: DashboardClientProps) {
               ))}
             </div>
 
-            {/* Infinite scroll sentinel */}
-            <div ref={sentinelRef} className="h-4" />
-
-            {isFetchingNextPage && (
+            {hasNextPage ? (
               <div className="flex justify-center py-8">
-                <LoadingSpinner />
+                <button
+                  onClick={() => void fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="btn-primary px-6 py-2 disabled:opacity-60"
+                >
+                  {isFetchingNextPage ? <LoadingSpinner /> : 'Load More'}
+                </button>
               </div>
-            )}
-
-            {!hasNextPage && characters.length > 0 && (
+            ) : (
               <p className="text-center text-gray-500 text-sm py-8">
                 All {characters.length} characters loaded
               </p>

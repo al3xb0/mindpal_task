@@ -4,7 +4,7 @@ export function Footer() {
       <p>
         Created by{' '}
         <a
-          href="https://aliaksei-konyshau.vercel.app/"
+          href="https://www.al-gres.com/"
           target="_blank"
           rel="noopener noreferrer"
           className="font-medium text-green-400 transition-colors hover:text-green-300"
